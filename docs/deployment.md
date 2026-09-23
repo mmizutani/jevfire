@@ -3,6 +3,40 @@
 JEVfire is a CPU sidecar connected to an existing vLLM server. It relies on
 native batched completions, explicit `logprob_token_ids`, token-ID responses,
 and automatic prefix caching. The measured backend version is **vLLM 0.29.0**.
+Set `DECISION_BACKEND=diffusiongemma` to use a compatible Jev bridge instead;
+see [DiffusionGemma backend](#diffusiongemma-backend) below. The Qwen backend
+remains the default.
+
+## DiffusionGemma backend
+
+Run a DiffusionGemma Jev bridge exposing `GET /health` and
+`POST /v1/systemone` on loopback. Its JSON contract is the one in the
+[vLLM structured server PR #57250](https://github.com/vllm-project/vllm/pull/57250).
+The bridge and model weights are installed and started separately. Then start
+the same JEVfire Python API:
+
+```bash
+python -m pip install -e '.[dev]'
+export DECISION_BACKEND=diffusiongemma
+export DECISION_JEV_URL=http://127.0.0.1:8011
+# If the bridge requires a Bearer token, export DECISION_JEV_API_KEY too.
+python -m uvicorn jevfire.app:app --host 127.0.0.1 --port 8010 --no-access-log
+```
+
+`/v1/decisions` keeps the same finite boolean/enum request and typed response
+shape. DiffusionGemma asks the Jev bridge once for all fields and returns its
+per-option probabilities. It converts boolean `true`/`false` back to JSON
+booleans. `min_probability` still permits abstention. `auto` and `batch` are
+accepted strategies; Qwen-specific prefill strategies, non-default
+`score_temperature`, and `cache_salt` return 422. The bridge accepts at most
+26 alternatives per field, so a larger enum returns 422 before inference.
+The response has no raw candidate log probabilities, calibration guarantee,
+or measured cache savings; those values are `null` or unavailable. Existing
+Qwen benchmarks are not DiffusionGemma measurements.
+
+Set `DECISION_MODEL` only if the bridge expects a different model ID. An
+authenticated bridge must use a loopback `DECISION_JEV_URL`, keeping the
+`DECISION_JEV_API_KEY` Bearer token on the local host.
 
 ## Tested backend configuration
 
@@ -53,6 +87,9 @@ above 128 requested scores, it also probes all 255 labels before becoming ready.
 
 | Variable | Default | Purpose |
 |:--|:--|:--|
+| `DECISION_BACKEND` | `qwen` | `qwen` or `diffusiongemma` |
+| `DECISION_JEV_URL` | `http://127.0.0.1:8011` | DiffusionGemma Jev bridge root |
+| `DECISION_JEV_API_KEY` | unset | Optional loopback Jev bridge Bearer token |
 | `DECISION_VLLM_URL` | `http://127.0.0.1:8000` | Native vLLM API root |
 | `DECISION_MODEL` | `qwen3.8-27b` | Exact model ID returned by `/v1/models` |
 | `DECISION_TOKENIZER` | `Qwen/Qwen3.8-27B-FP8` | Matching tokenizer ID or local path |

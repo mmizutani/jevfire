@@ -7,6 +7,8 @@ import { ManeuverExecutor, planManeuvers } from './maneuvers.js';
 import { DecisionTelemetry, FrameTelemetry } from '../controller.js';
 
 const $ = (id) => document.getElementById(id);
+const remote = () => $('backend').value === 'jev';
+const modelName = () => (remote() ? 'DiffusionGemma' : 'Qwen');
 const text = (id, value) => {
   if ($(id).textContent !== String(value)) $(id).textContent = value;
 };
@@ -64,7 +66,7 @@ const showError = (message) => {
   $('error').hidden = !message;
 };
 function enabled() {
-  $('load').disabled = loading || !navigator.gpu;
+  $('load').disabled = loading || (!remote() && !navigator.gpu);
   $('manual').disabled = $('scripted').disabled = loading || Boolean(probe);
   $('run').disabled = loading || mode === 'idle' || Boolean(probe);
 }
@@ -114,8 +116,10 @@ function start() {
     'status',
     mode === 'model'
       ? fastMode()
-        ? 'Live Qwen maneuvers · cached instructions · local physics guard.'
-        : 'Qwen is choosing three raw controls. No physics guard.'
+        ? remote()
+          ? 'Live DiffusionGemma maneuvers · local physics guard.'
+          : 'Live Qwen maneuvers · cached instructions · local physics guard.'
+        : `${modelName()} is choosing three raw controls. No physics guard.`
       : mode === 'manual'
         ? 'Arrow keys move · Space jumps · hold Shift to run.'
         : 'Scripted baseline. These rules do not use your prompt or count as AI decisions.',
@@ -134,7 +138,11 @@ function updateUI(now = performance.now()) {
   );
   text(
     'source',
-    mode === 'model' && !fastMode() ? 'QWEN RAW BUTTONS' : sourceLabel[mode],
+    mode === 'model' && !fastMode()
+      ? `${modelName().toUpperCase()} RAW BUTTONS`
+      : mode === 'model' && remote()
+        ? 'DIFFUSIONGEMMA + PHYSICS GUARD'
+        : sourceLabel[mode],
   );
   text(
     'state',
@@ -145,9 +153,9 @@ function updateUI(now = performance.now()) {
         : !running
           ? 'PAUSED'
           : mode === 'model' && busy
-            ? 'QWEN IS THINKING…'
+            ? `${modelName().toUpperCase()} IS THINKING…`
             : mode === 'model'
-              ? 'QWEN IS PLAYING'
+              ? `${modelName().toUpperCase()} IS PLAYING`
               : mode === 'manual'
                 ? 'YOUR TURN'
                 : 'SCRIPTED RUN',
@@ -155,7 +163,7 @@ function updateUI(now = performance.now()) {
   text(
     'timing-status',
     $('timing').value === 'step' && mode === 'model'
-      ? 'Decision steps · the world waits while Qwen thinks'
+      ? `Decision steps · the world waits while ${modelName()} thinks`
       : mode === 'model'
         ? 'Live mode · the world moves during inference'
         : 'Original drawn artwork · approximate World 1-1 physics',
@@ -178,7 +186,9 @@ function updateUI(now = performance.now()) {
   );
   text(
     'cache',
-    inputTotal ? `${Math.round((cachedTotal / inputTotal) * 100)}%` : '—',
+    inputTotal && !remote()
+      ? `${Math.round((cachedTotal / inputTotal) * 100)}%`
+      : '—',
   );
   text('fps', Math.round(frames.snapshot(now).fps));
   text(
@@ -255,17 +265,20 @@ function fail(message) {
   loaded = loading = busy = false;
   pending = null;
   mode = 'idle';
-  stop('Model stopped. Reload Qwen to try again.');
+  stop(`Model stopped. Reconnect ${modelName()} to try again.`);
   $('download').hidden = true;
-  text('load', 'Reload Qwen · cached');
+  text('load', remote() ? 'Reconnect DiffusionGemma' : 'Reload Qwen · cached');
   showError(message);
   enabled();
 }
 function createWorker() {
-  const current = new Worker(
-    new URL('../inference.worker.js', import.meta.url),
-    { type: 'module' },
-  );
+  const current = remote()
+    ? new Worker(new URL('../jev.worker.js', import.meta.url), {
+        type: 'module',
+      })
+    : new Worker(new URL('../inference.worker.js', import.meta.url), {
+        type: 'module',
+      });
   worker = current;
   current.onmessage = ({ data }) => {
     if (worker !== current) return;
@@ -279,10 +292,12 @@ function createWorker() {
       loaded = true;
       mode = 'model';
       $('download').hidden = true;
-      text('load', 'Use local Qwen');
+      text('load', remote() ? 'Use DiffusionGemma' : 'Use local Qwen');
       text(
         'status',
-        `Qwen is ready. ${data.sdk_backend?.includes('forked') ? 'Shared-context caching is active.' : 'This runtime uses independent prefills.'} Start the level to play.`,
+        remote()
+          ? 'DiffusionGemma is connected through the local Jev proxy. Start the level to play.'
+          : `Qwen is ready. ${data.sdk_backend?.includes('forked') ? 'Shared-context caching is active.' : 'This runtime uses independent prefills.'} Start the level to play.`,
       );
       enabled();
       updateUI();
@@ -435,6 +450,16 @@ function requestDecision(options = {}) {
     }
   }
   context ??= game.observe();
+  if (maneuver && remote() && context.options.length === 1) {
+    if (options.probe)
+      throw new Error('Only one feasible maneuver; no model choice is needed');
+    const chosen = executor.choose(context.options[0].id, game, {
+      forced: true,
+    });
+    actionRemaining = chosen.accepted ? 0.12 : 0.04;
+    updateUI();
+    return;
+  }
   const requestPolicy = options.policy ?? policy;
   pending = {
     id: ++sequence,
@@ -457,7 +482,10 @@ function requestDecision(options = {}) {
     testOnly: options.probe === true,
   });
   watchdog = setTimeout(
-    () => fail('Inference took more than 45 seconds. Reload Qwen to retry.'),
+    () =>
+      fail(
+        `Inference took more than 45 seconds. Reconnect ${modelName()} to retry.`,
+      ),
     45000,
   );
 }
@@ -486,6 +514,29 @@ $('cancel').onclick = () => {
   pending = null;
   $('download').hidden = true;
   text('status', 'Download cancelled. Completed files may remain cached.');
+  enabled();
+};
+$('backend').onchange = () => {
+  stop('Backend changed. Connect to the selected model to continue.');
+  text('cartridge-location', remote() ? 'SERVER' : 'LOCAL');
+  text('cartridge-size', remote() ? 'JEV' : '0.8B');
+  text('cartridge-model', remote() ? 'DIFFUSIONGEMMA' : 'QWEN 3.5');
+  text(
+    'backend-credit',
+    remote() ? 'DiffusionGemma · Jev server' : 'Qwen 3.5 · WebLLM · WebGPU',
+  );
+  probe?.reject(new Error('Backend changed'));
+  probe = null;
+  clearTimeout(watchdog);
+  worker?.terminate();
+  worker = null;
+  loaded = loading = busy = false;
+  pending = null;
+  mode = 'idle';
+  reset();
+  $('download').hidden = true;
+  text('load', remote() ? 'Connect DiffusionGemma' : 'Load Qwen');
+  showError('');
   enabled();
 };
 $('manual').onclick = () => {
@@ -711,7 +762,7 @@ window.marioProbe = (options = {}) => {
   if (!loaded || busy || running || probe)
     return Promise.reject(
       new Error(
-        'Load Qwen, pause, and wait for inference to finish before probing.',
+        `Connect ${modelName()}, pause, and wait for inference to finish before probing.`,
       ),
     );
   return new Promise((resolve, reject) => {

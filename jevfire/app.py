@@ -1,17 +1,42 @@
-"""Serve categorical decisions beside a CUDA vLLM deployment."""
+"""Serve categorical decisions through vLLM scoring or a Jev bridge."""
 
 import os
 from contextlib import asynccontextmanager
+from urllib.parse import urlparse
 
 import httpx
 from fastapi import FastAPI, HTTPException
 
 from .core import BackendError, DecisionEngine
+from .diffusiongemma import DiffusionGemmaEngine
 from .models import DecisionRequest
 
 
 @asynccontextmanager
 async def lifespan(app: FastAPI):
+    backend = os.environ.get("DECISION_BACKEND", "qwen")
+    if backend == "diffusiongemma":
+        url = os.environ.get("DECISION_JEV_URL", "http://127.0.0.1:8011")
+        key = os.environ.get("DECISION_JEV_API_KEY")
+        if key and urlparse(url).hostname not in ("127.0.0.1", "localhost", "::1"):
+            raise RuntimeError("Authenticated Jev bridge requires a loopback URL")
+        async with httpx.AsyncClient(
+            base_url=url,
+            timeout=httpx.Timeout(120, connect=5),
+            headers={"Authorization": f"Bearer {key}"} if key else {},
+            trust_env=False,
+        ) as client:
+            response = await client.get("/health")
+            response.raise_for_status()
+            if response.json().get("status") != "ok":
+                raise RuntimeError("Jev bridge is not ready")
+            app.state.engine = DiffusionGemmaEngine(
+                client, os.environ.get("DECISION_MODEL", "diffusiongemma")
+            )
+            yield
+        return
+    if backend != "qwen":
+        raise RuntimeError(f"Unknown DECISION_BACKEND: {backend}")
     from transformers import AutoTokenizer
 
     model = os.environ.get("DECISION_MODEL", "qwen3.8-27b")
@@ -60,7 +85,7 @@ app = FastAPI(
     title="JEVfire",
     version="0.1.0",
     description=(
-        "CUDA inference through vLLM batched selected-token scoring. Flat boolean/enum "
+        "Finite boolean/enum decisions through vLLM selected-token scoring or Jev DiffusionGemma. "
         "fields only. Probabilities are relative candidate scores, not calibrated confidence. "
         "Serve on loopback or behind an authenticated gateway."
     ),
@@ -75,12 +100,16 @@ async def health():
         response = await engine.client.get("/health")
         response.raise_for_status()
     except httpx.HTTPError as exc:
-        raise HTTPException(503, "vLLM backend is unavailable") from exc
+        raise HTTPException(503, "Inference backend is unavailable") from exc
     return {
         "status": "ok",
         "model": engine.model,
-        "max_choices": len(engine.labels),
-        "max_score_tokens": engine.max_score_tokens,
+        "max_choices": engine.max_choices
+        if isinstance(engine, DiffusionGemmaEngine)
+        else len(engine.labels),
+        "max_score_tokens": None
+        if isinstance(engine, DiffusionGemmaEngine)
+        else engine.max_score_tokens,
     }
 
 
@@ -91,8 +120,8 @@ async def decisions(request: DecisionRequest):
     except ValueError as exc:
         raise HTTPException(422, str(exc)) from exc
     except httpx.TimeoutException as exc:
-        raise HTTPException(504, "vLLM scoring timed out") from exc
+        raise HTTPException(504, "Inference timed out") from exc
     except (BackendError, httpx.HTTPError) as exc:
         raise HTTPException(
-            502, "vLLM scoring failed; no decision was substituted"
+            502, "Inference failed; no decision was substituted"
         ) from exc

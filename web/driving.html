@@ -6,7 +6,7 @@
     <meta name="theme-color" content="#efede6" />
     <meta
       name="description"
-      content="Four cars. Four prompts. One local language model. A browser driving experiment by JEVfire, powered by WebLLM and WebGPU."
+      content="Four cars and four prompts in a browser driving experiment. Choose local Qwen or DiffusionGemma through a Jev server."
     />
     <title>Slipstream — four drivers, four prompts · JEVfire</title>
     <link
@@ -18,7 +18,8 @@
     <div class="shell">
       <header class="masthead">
         <a class="brand" href="./learn.html"
-          >JEV<span>fire</span><small>EXPERIMENT 03 / LOCAL AI</small></a
+          >JEV<span>fire</span
+          ><small id="header-mode-mark">EXPERIMENT 03 / LOCAL AI</small></a
         >
         <nav aria-label="Demos">
           <a href="./learn.html">How it works</a>
@@ -55,6 +56,13 @@
           <button id="load" class="primary">
             ↓ Load Qwen 3.5 <small>~450 MB · cached locally</small>
           </button>
+          <label class="pace-control"
+            >AI backend
+            <select id="backend" aria-label="AI backend">
+              <option value="qwen">Local Qwen 3.5 · WebGPU</option>
+              <option value="jev">DiffusionGemma · Jev server</option>
+            </select>
+          </label>
           <button id="preview">Try scripted drive</button>
           <span class="control-divider"></span>
           <button id="run" class="dark" disabled>Start engines</button>
@@ -86,8 +94,8 @@
           /></label>
         </section>
         <div class="notice" id="compatibility">
-          Qwen chooses maneuvers, boost and pit stops. Grip, tyre wear and
-          damage decide whether the risk pays off.
+          The selected model chooses maneuvers, boost and pit stops. Grip, tyre
+          wear and damage decide whether the risk pays off.
         </div>
         <div id="download" class="download" hidden>
           <div>
@@ -163,8 +171,7 @@
               aria-label="Choose a driver"
             ></section>
             <p class="run-status" id="run-status" role="status">
-              Load the local model, or take a scripted drive to explore the
-              circuit.
+              Connect a model, or take a scripted drive to explore the circuit.
             </p>
             <section class="race-events" aria-label="Race events">
               <div class="section-label">
@@ -179,19 +186,19 @@
               <summary>What is actually driving the cars?</summary>
               <div>
                 <p>
-                  Qwen sees race position, traffic gaps and closing speeds,
-                  grip, the next corner, tyre condition, damage, boost, and pit
-                  distance. It scores legal speed changes, safe or risky
-                  overtakes, boost, and pit requests. Code assigns the winning
-                  action to that car’s known field.
+                  The selected model sees race position, traffic gaps and
+                  closing speeds, grip, the next corner, tyre condition, damage,
+                  boost, and pit distance. It scores legal speed changes, safe
+                  or risky overtakes, boost, and pit requests. Code assigns the
+                  winning action to that car’s known field.
                 </p>
                 <p>
-                  All eligible cars enter one fleet request together. WebLLM
-                  scores their independent prompts sequentially on one model,
-                  reusing eligible cached prefixes. The next fleet request
-                  starts immediately, with no artificial pause. This browser
-                  build does not expose simultaneous multi-sequence GPU
-                  execution. Steering, smooth lane changes, traffic, and
+                  All eligible cars enter one fleet round together. Local Qwen
+                  uses WebLLM to score their independent prompts sequentially,
+                  reusing eligible cached prefixes. DiffusionGemma sends one Jev
+                  request with a typed question for each car; those answers
+                  arrive together. The next fleet round starts without an
+                  artificial pause. Steering, smooth lane changes, traffic, and
                   optional following assistance run between AI decisions. Tight
                   overtakes temporarily waive that assistance. Excess corner
                   speed can cause a spin, damage, or retirement. Pitting costs
@@ -362,7 +369,8 @@ An accepted AI decision will save its observation here.</pre
         </div>
       </main>
       <footer>
-        <span>JEVfire / Slipstream</span><span>Qwen 3.5 · WebLLM · WebGPU</span
+        <span>JEVfire / Slipstream</span
+        ><span id="backend-credit">Qwen 3.5 · WebLLM · WebGPU</span
         ><a href="./">Back to Last Hearth ↗</a>
       </footer>
     </div>

@@ -15,9 +15,53 @@ choosing finite maneuvers with persistent instruction caching and an explicit ph
 **[Slipstream: four racing strategies →](https://kikoncuo.github.io/jevfire/driving.html)** ·
 **[Last Hearth: six villagers →](https://kikoncuo.github.io/jevfire/)**
 
-All three demos run Qwen 3.5 0.8B locally through WebLLM and WebGPU. The same pinned
-model files can be reused from the browser cache; each page creates its own
-worker and engine. Neither requires an inference server or API key.
+All three demos offer local Qwen 3.5 0.8B through WebLLM and WebGPU, a
+DiffusionGemma server through Jev, and their existing scripted controls. Qwen's
+pinned files can be reused from the browser cache; each page creates its own
+worker and engine. The DiffusionGemma option requires a local Jev server.
+
+## DiffusionGemma through Jev
+
+Start a Jev-compatible DiffusionGemma server exposing `GET /health` and
+`POST /v1/systemone`. The `/v1/systemone` route must accept a `model` of
+`diffusiongemma`, a text `state`, and a map of typed `choice` questions. It
+must return `answers[id].choice`, `answers[id].probabilities`, and
+`usage.input_tokens` / `usage.output_tokens`. The [vLLM structured server from
+PR #57250](https://github.com/vllm-project/vllm/pull/57250) provides this
+contract. Its server setup and model weights are separate from this web app.
+
+With the Jev server reachable at `http://127.0.0.1:8011`, run:
+
+```sh
+cd web
+npm ci
+npm run dev
+```
+
+Open the Vite URL, select **DiffusionGemma · Jev server** on any game, and click
+**Connect DiffusionGemma**. If the Jev server uses another URL, set
+`JEVFIRE_JEV_URL=http://127.0.0.1:PORT` before `npm run dev` or
+`npm run preview`. If the local bridge requires a Bearer token, set
+`JEVFIRE_JEV_API_KEY` in the Vite process environment. Authenticated proxy
+targets are restricted to loopback. Vite adds the header server-side while
+proxying `/jev-health` and `/v1/systemone`; the browser makes same-origin
+requests and never receives the key.
+The published static GitHub Pages demo does not provide this proxy; run the
+fork locally to use DiffusionGemma.
+
+Last Hearth sends one question for the selected villager. Slipstream sends
+one request with up to four independent driver questions per fleet round.
+Mario sends either three raw control questions or one physics-guarded maneuver
+question. The server chooses only from actions the game currently allows.
+Paused, reset, and changed-policy replies are still discarded by each game.
+Failed server requests pause the model controller and show an error; they do
+not switch to scripted actions. Mario's one-option maneuver is applied by
+the local physics guard without a server call or AI tick.
+
+The existing Qwen measurements and cache percentages do not describe
+DiffusionGemma. Jev latency is measured in the browser as request wall time;
+server token counts come from Jev's response. The Jev server does not report
+browser prefix-cache savings, so that UI metric shows `—`.
 
 ## Slipstream
 

@@ -6,7 +6,7 @@
     <meta name="theme-color" content="#262e27" />
     <meta
       name="description"
-      content="Keep six villagers alive with a language model running on your own GPU. A playable JEVfire experiment in local, constrained decisions."
+      content="Keep six villagers alive with local Qwen or DiffusionGemma through a Jev server. A playable JEVfire experiment in finite decisions."
     />
     <title>Last Hearth — a JEVfire experiment</title>
     <link
@@ -92,16 +92,25 @@
             <section class="panel-section engine-section">
               <div class="section-caption">
                 <span>01 / THE MIND</span
-                ><span class="local-mark">ON YOUR DEVICE</span>
+                ><span id="backend-mark" class="local-mark"
+                  >ON YOUR DEVICE</span
+                >
               </div>
               <h2>Give the village a brain.</h2>
               <p class="intro-note">
-                Qwen chooses. The villagers act.<br />You write the orders they
-                live by.
+                The model chooses. The villagers act.<br />You write the orders
+                they live by.
               </p>
               <button id="load" class="load-button">
                 ↓ Load Qwen 3.5 <span>0.8B · ~450 MB · cached locally</span>
               </button>
+              <label
+                >AI backend
+                <select id="backend" aria-label="AI backend">
+                  <option value="qwen">Local Qwen 3.5 · WebGPU</option>
+                  <option value="jev">DiffusionGemma · Jev server</option>
+                </select>
+              </label>
               <div id="download" class="download" hidden>
                 <progress
                   id="progress"
@@ -132,8 +141,8 @@
                 >
               </div>
               <p class="fine-print performance-note">
-                Balanced leaves GPU time for the village. Maximum prioritizes AI
-                throughput.
+                Balanced spaces AI requests. Maximum sends the next request
+                sooner.
               </p>
               <p id="error" class="error" role="alert" hidden></p>
             </section>
@@ -244,7 +253,7 @@ Keep everyone alive. Keep food in reserve, protect threatened villagers, and mai
               >
             </div>
             <p id="mission-status" class="mission-status" role="status">
-              Load Qwen or try the scripted baseline to begin.
+              Connect a model or try the scripted baseline to begin.
             </p>
             <section
               id="crew"
@@ -309,7 +318,7 @@ Keep everyone alive. Keep food in reserve, protect threatened villagers, and mai
               </div>
               <div id="model-decision" class="model-decision" hidden>
                 <div class="job-heading">
-                  <span>LATEST QWEN DECISION</span
+                  <span>LATEST MODEL DECISION</span
                   ><time id="selected-decision-time"></time>
                 </div>
                 <strong id="selected-thought"></strong>
@@ -334,7 +343,7 @@ Keep everyone alive. Keep food in reserve, protect threatened villagers, and mai
                 </p>
                 <pre id="selected-context">Select a villager.</pre>
                 <details id="decision-observation" hidden>
-                  <summary>What Qwen saw last time</summary>
+                  <summary>What the model saw last time</summary>
                   <pre id="selected-observed-context"></pre>
                 </details>
               </details>
@@ -359,11 +368,11 @@ Keep everyone alive. Keep food in reserve, protect threatened villagers, and mai
             <div class="technical-columns">
               <div>
                 <p>
-                  Each role has a fixed set of allowed actions. The model scores
-                  eligible choices; JavaScript selects a value and constructs
-                  the fixed fields. It cannot create a “teleport” field or grant
-                  unlimited food. An allowed choice can still get a villager
-                  killed.
+                  Each role has a fixed set of allowed actions. The selected
+                  backend compares eligible choices; the game validates and
+                  applies a typed value. It cannot create a “teleport” field or
+                  grant unlimited food. An allowed choice can still get a
+                  villager killed.
                 </p>
                 <button class="text-button" id="inject">
                   Test a made-up field ↗
@@ -401,10 +410,11 @@ Keep everyone alive. Keep food in reserve, protect threatened villagers, and mai
                 applying them.
               </p>
               <p>
-                WebLLM runs Qwen 3.5 0.8B on your browser GPU. The model and
-                runtime download from Hugging Face and public CDNs; decisions
-                then run on this device. This demo supplies symbolic world
-                state, not screenshots. Game art:
+                With local Qwen, WebLLM runs Qwen 3.5 0.8B on your browser GPU.
+                Its model and runtime download from Hugging Face and public
+                CDNs; decisions then run on this device. With DiffusionGemma,
+                choices come from the configured local Jev server. This demo
+                supplies symbolic world state, not screenshots. Game art:
                 <a
                   href="https://kaylousberg.itch.io/"
                   target="_blank"

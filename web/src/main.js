@@ -26,6 +26,10 @@ import {
 } from './controller.js';
 
 const $ = (id) => document.getElementById(id);
+const remote = () => $('backend').value === 'jev';
+const modelName = () => (remote() ? 'DiffusionGemma' : 'Qwen');
+const modelDetails = () =>
+  remote() ? 'DiffusionGemma · Jev server' : 'Qwen 3.5 · WebLLM';
 const text = (id, value) => {
   const node = $(id);
   if (node && node.textContent !== String(value)) node.textContent = value;
@@ -39,6 +43,7 @@ let worker = null,
   loaded = false,
   loading = false,
   busy = false,
+  gpuAvailable = true,
   mode = 'idle';
 let epoch = 0,
   sequence = 0,
@@ -92,7 +97,7 @@ function stop(message = 'Paused. Pending decisions are discarded.') {
   text(
     'mode-label',
     mode === 'model'
-      ? 'Qwen · paused'
+      ? `${modelName()} · paused`
       : mode === 'scripted'
         ? 'Scripted · paused'
         : 'Choose a controller',
@@ -100,6 +105,7 @@ function stop(message = 'Paused. Pending decisions are discarded.') {
 }
 function enabled() {
   $('run').disabled = loading || !rendererReady || mode === 'idle';
+  $('load').disabled = loading || (!remote() && !gpuAvailable);
 }
 function selectUnit(id, reveal = false) {
   if (!game.units.some((unit) => unit.id === id)) return;
@@ -169,7 +175,10 @@ function updateInspector() {
   text('selected-stamina', `${Math.ceil(unit.stamina ?? 100)} / 100`);
   text('selected-strength', Number(unit.strength || 1).toFixed(1));
   text('selected-action', job.label);
-  text('selected-source', SOURCE_LABELS[job.source] || '');
+  text(
+    'selected-source',
+    job.source === 'model' ? modelName() : SOURCE_LABELS[job.source] || '',
+  );
   text(
     'selected-activity',
     game.time > 0 ? currentActivity(game, unit) : 'Ready for the next run',
@@ -186,7 +195,7 @@ function updateInspector() {
   text(
     'selected-decision-empty',
     thinking
-      ? 'Qwen is choosing a job…'
+      ? `${modelName()} is choosing a job…`
       : mode === 'scripted'
         ? 'Scripted controller. Its commands are listed below.'
         : unit.ruleAction
@@ -252,7 +261,8 @@ function updateInspector() {
         source = document.createElement('span');
       stamp.textContent = timeString(entry.at);
       label.textContent = ACTION_LABELS[entry.action] || entry.action;
-      source.textContent = SOURCE_LABELS[entry.source];
+      source.textContent =
+        entry.source === 'model' ? modelName() : SOURCE_LABELS[entry.source];
       if (entry.detail) li.title = entry.detail;
       body.append(label, source);
       li.append(stamp, body);
@@ -380,7 +390,9 @@ function applyModelResult(data, request) {
   text('latency', `${Math.round(data.elapsed_ms)} ms`);
   text(
     'output-note',
-    `${unit.name} · ${data.prompt_tokens} input tokens · one scored output position. Generated text is ignored.`,
+    remote()
+      ? `${unit.name} · ${data.prompt_tokens} server input tokens · Jev returned a typed choice.`
+      : `${unit.name} · ${data.prompt_tokens} input tokens · one scored output position. Generated text is ignored.`,
   );
   text(
     'mission-status',
@@ -403,15 +415,21 @@ function failWorker(message) {
   $('download').hidden = true;
   $('load').disabled = false;
   $('preview').disabled = false;
-  text('load', 'Reload Qwen · ~450 MB cached');
+  text(
+    'load',
+    remote() ? 'Reconnect DiffusionGemma' : 'Reload Qwen · ~450 MB cached',
+  );
   text('controller', 'Not loaded');
   enabled();
 }
 function createWorker() {
-  const current = new Worker(
-    new URL('./inference.worker.js', import.meta.url),
-    { type: 'module' },
-  );
+  const current = remote()
+    ? new Worker(new URL('./jev.worker.js', import.meta.url), {
+        type: 'module',
+      })
+    : new Worker(new URL('./inference.worker.js', import.meta.url), {
+        type: 'module',
+      });
   worker = current;
   current.onmessage = ({ data }) => {
     if (worker !== current) return;
@@ -429,11 +447,16 @@ function createWorker() {
       $('download').hidden = true;
       $('load').disabled = false;
       $('preview').disabled = false;
-      text('load', 'Use local Qwen');
-      text('controller', 'Qwen 3.5 · WebLLM');
-      text('mode-label', 'Qwen · ready');
-      text('compatibility', 'Qwen is loaded. Decisions stay on this device.');
-      text('mission-status', 'Qwen is ready. Start the village.');
+      text('load', remote() ? 'Use DiffusionGemma' : 'Use local Qwen');
+      text('controller', modelDetails());
+      text('mode-label', `${modelName()} · ready`);
+      text(
+        'compatibility',
+        remote()
+          ? 'DiffusionGemma is connected through the local Jev proxy. Decisions use the server.'
+          : 'Qwen is loaded. Decisions stay on this device.',
+      );
+      text('mission-status', `${modelName()} is ready. Start the village.`);
       enabled();
       return;
     }
@@ -520,9 +543,9 @@ $('load').onclick = () => {
   hideError();
   if (loaded) {
     mode = 'model';
-    text('controller', 'Qwen 3.5 · WebLLM');
-    text('mode-label', 'Qwen · ready');
-    text('mission-status', 'Local model selected. Resume the village.');
+    text('controller', modelDetails());
+    text('mode-label', `${modelName()} · ready`);
+    text('mission-status', `${modelName()} selected. Resume the village.`);
     enabled();
     return;
   }
@@ -532,7 +555,7 @@ $('load').onclick = () => {
   $('preview').disabled = true;
   $('download').hidden = false;
   $('progress').value = 0;
-  text('controller', 'Loading Qwen');
+  text('controller', remote() ? 'Connecting to Jev' : 'Loading Qwen');
   enabled();
   createWorker();
   worker.postMessage({ type: 'load' });
@@ -550,6 +573,29 @@ $('cancel-load').onclick = () => {
     'mission-status',
     'Download cancelled. Completed files may remain cached.',
   );
+  enabled();
+};
+$('backend').onchange = () => {
+  stop('Backend changed. Connect to the selected model to continue.');
+  text('backend-mark', remote() ? 'JEV SERVER' : 'ON YOUR DEVICE');
+  probe?.reject(new Error('Backend changed'));
+  probe = null;
+  worker?.terminate();
+  worker = null;
+  loaded = loading = busy = false;
+  pending = null;
+  mode = 'idle';
+  resetGame();
+  $('download').hidden = true;
+  text('load', remote() ? 'Connect DiffusionGemma' : 'Load Qwen 3.5');
+  text('controller', 'Not loaded');
+  text(
+    'compatibility',
+    remote()
+      ? 'Use the local Jev proxy to connect to a DiffusionGemma server.'
+      : 'Qwen runs locally through WebGPU.',
+  );
+  hideError();
   enabled();
 };
 $('preview').onclick = () => {
@@ -575,11 +621,14 @@ $('run').onclick = () => {
   game.running = true;
   telemetry.begin(performance.now());
   text('run', 'Pause');
-  text('mode-label', mode === 'model' ? 'Qwen · live' : 'Scripted · no AI');
+  text(
+    'mode-label',
+    mode === 'model' ? `${modelName()} · live` : 'Scripted · no AI',
+  );
   text(
     'mission-status',
     mode === 'model'
-      ? 'Qwen is observing the village…'
+      ? `${modelName()} is observing the village…`
       : 'Scripted preview. Prompt edits affect the model controller only.',
   );
 };
@@ -688,24 +737,28 @@ updateUI();
 enabled();
 (async () => {
   if (!navigator.gpu) {
-    text(
-      'compatibility',
-      'WebGPU is unavailable. Try desktop Chrome/Edge or the scripted preview.',
-    );
-    $('load').disabled = true;
+    if (!remote())
+      text(
+        'compatibility',
+        'WebGPU is unavailable. Try desktop Chrome/Edge or the scripted preview.',
+      );
+    gpuAvailable = false;
+    enabled();
     return;
   }
   try {
     const adapter = await navigator.gpu.requestAdapter();
     if (!adapter?.features.has('shader-f16'))
       throw new Error('This model needs a WebGPU adapter with shader-f16.');
-    text(
-      'compatibility',
-      '~450 MB, downloaded on request and cached in this browser. Requires WebGPU.',
-    );
+    if (!remote())
+      text(
+        'compatibility',
+        '~450 MB, downloaded on request and cached in this browser. Requires WebGPU.',
+      );
   } catch (e) {
-    text('compatibility', e.message);
-    $('load').disabled = true;
+    if (!remote()) text('compatibility', e.message);
+    gpuAvailable = false;
+    enabled();
   }
 })();
 function frame(now) {
@@ -846,7 +899,9 @@ window.jevfireDiagnostics = ({ selectionTargets = false } = {}) => ({
 window.jevfireTestDecision = (options) =>
   new Promise((resolve, reject) => {
     if (!loaded || busy || game.running || probe) {
-      reject(new Error('Load Qwen and pause before probing a policy'));
+      reject(
+        new Error(`Connect ${modelName()} and pause before probing a policy`),
+      );
       return;
     }
     const unit = game.units.find((unit) => unit.id === options.unitId);

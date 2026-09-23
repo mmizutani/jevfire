@@ -7,6 +7,8 @@ import { FleetTelemetry } from './telemetry.js';
 import { DecisionTelemetry, FrameTelemetry } from '../controller.js';
 
 const $ = (id) => document.getElementById(id);
+const remote = () => $('backend').value === 'jev';
+const modelName = () => (remote() ? 'DiffusionGemma' : 'Qwen');
 const text = (id, value) => {
   const element = $(id);
   if (element.textContent !== String(value)) element.textContent = value;
@@ -80,7 +82,7 @@ function showError(message) {
 function enabled() {
   $('run').disabled =
     loading || !rendererReady || mode === 'idle' || Boolean(probe);
-  $('load').disabled = loading || !gpuAvailable;
+  $('load').disabled = loading || (!remote() && !gpuAvailable);
   $('preview').disabled = loading || !rendererReady || Boolean(probe);
 }
 function stop(message = 'Paused. Pending decisions are discarded.') {
@@ -217,10 +219,10 @@ function updateInspector() {
       pending?.requests?.some((r) => r.unitId === car.id)) &&
       game.running &&
       mode === 'model'
-      ? 'Qwen is reading this car’s traffic…'
+      ? `${modelName()} is reading this car’s traffic…`
       : mode === 'scripted'
         ? 'Scripted drive. No AI scores are produced.'
-        : 'No model decision yet. Load Qwen and start driving.',
+        : `No model decision yet. Connect ${modelName()} and start driving.`,
   );
   text(
     'decision-time',
@@ -340,9 +342,9 @@ function updateUI(now = performance.now()) {
   text(
     'mode-label',
     loading
-      ? 'Loading Qwen…'
+      ? `Connecting ${modelName()}…`
       : mode === 'model'
-        ? `Qwen · ${game.running ? 'driving' : 'paused'}`
+        ? `${modelName()} · ${game.running ? 'driving' : 'paused'}`
         : mode === 'scripted'
           ? `Scripted · ${game.running ? 'driving' : 'paused'}`
           : 'Choose a controller',
@@ -365,7 +367,7 @@ function updateUI(now = performance.now()) {
   );
   text(
     'cache-saved',
-    mode === 'model'
+    mode === 'model' && !remote()
       ? `${Math.round(metrics.cache_saved_fraction * 100)}%`
       : '—',
   );
@@ -453,17 +455,23 @@ function failWorker(message) {
   loaded = loading = busy = false;
   pending = null;
   mode = 'idle';
-  stop('Model stopped. Reload Qwen to continue.');
+  stop(`Model stopped. Reconnect ${modelName()} to continue.`);
   $('download').hidden = true;
-  text('load', 'Reload Qwen · ~450 MB cached');
+  text(
+    'load',
+    remote() ? 'Reconnect DiffusionGemma' : 'Reload Qwen · ~450 MB cached',
+  );
   showError(message);
   enabled();
 }
 function createWorker() {
-  const current = new Worker(
-    new URL('../inference.worker.js', import.meta.url),
-    { type: 'module' },
-  );
+  const current = remote()
+    ? new Worker(new URL('../jev.worker.js', import.meta.url), {
+        type: 'module',
+      })
+    : new Worker(new URL('../inference.worker.js', import.meta.url), {
+        type: 'module',
+      });
   worker = current;
   current.onmessage = ({ data }) => {
     if (worker !== current) return;
@@ -478,17 +486,20 @@ function createWorker() {
       loading = false;
       busy = false;
       mode = 'model';
+      SOURCE.model = modelName();
       $('download').hidden = true;
-      text('load', 'Use local Qwen');
+      text('load', remote() ? 'Use DiffusionGemma' : 'Use local Qwen');
       text(
         'compatibility',
-        data.prefix_cache_slots > 0
-          ? 'Qwen is loaded locally. All eligible cars enter one fleet request, with cached prompts and no delay between rounds.'
-          : 'Qwen is loaded locally. All eligible cars enter one fleet request with no delay between rounds. This runtime uses independent prefills.',
+        remote()
+          ? 'DiffusionGemma is connected through the local Jev proxy. Each fleet round sends one request with a question for every eligible car.'
+          : data.prefix_cache_slots > 0
+            ? 'Qwen is loaded locally. All eligible cars enter one fleet request, with cached prompts and no delay between rounds.'
+            : 'Qwen is loaded locally. All eligible cars enter one fleet request with no delay between rounds. This runtime uses independent prefills.',
       );
       text(
         'run-status',
-        'Ready. Start the engines to let Qwen choose for all four drivers.',
+        `Ready. Start the engines to let ${modelName()} choose for all four drivers.`,
       );
       enabled();
       updateUI();
@@ -591,7 +602,9 @@ function createWorker() {
       const car = game.drivers.find((driver) => driver.id === request.unitId);
       text(
         'run-status',
-        `${car.name}: ${ACTION_LABELS[action].toLowerCase()} · ${data.prompt_tokens} input tokens · one scored output position.`,
+        remote()
+          ? `${car.name}: ${ACTION_LABELS[action].toLowerCase()} · ${data.prompt_tokens} server input tokens · Jev typed choice.`
+          : `${car.name}: ${ACTION_LABELS[action].toLowerCase()} · ${data.prompt_tokens} input tokens · one scored output position.`,
       );
       updateUI();
     } catch (error) {
@@ -641,7 +654,7 @@ function requestBatch() {
   watchdog = setTimeout(
     () =>
       failWorker(
-        'Fleet inference took more than 45 seconds. Reload Qwen to retry.',
+        `Fleet inference took more than 45 seconds. Reconnect ${modelName()} to retry.`,
       ),
     45000,
   );
@@ -783,7 +796,7 @@ function requestDecision(car, options = {}) {
   watchdog = setTimeout(
     () =>
       failWorker(
-        'Inference took more than 45 seconds. The drive has been paused; try reloading Qwen.',
+        `Inference took more than 45 seconds. The drive has been paused; reconnect ${modelName()}.`,
       ),
     45000,
   );
@@ -795,7 +808,7 @@ $('load').onclick = () => {
   hideError();
   if (loaded) {
     mode = 'model';
-    text('run-status', 'Local Qwen selected. Resume the drive.');
+    text('run-status', `${modelName()} selected. Resume the drive.`);
     enabled();
     updateUI();
     return;
@@ -804,7 +817,10 @@ $('load').onclick = () => {
   mode = 'idle';
   $('download').hidden = false;
   $('progress').value = 0;
-  text('load-status', 'Preparing Qwen and the tokenizer…');
+  text(
+    'load-status',
+    remote() ? 'Checking the Jev server…' : 'Preparing Qwen and the tokenizer…',
+  );
   createWorker();
   worker.postMessage({ type: 'load' });
   enabled();
@@ -819,6 +835,37 @@ $('cancel-load').onclick = () => {
   enabled();
   updateUI();
 };
+$('backend').onchange = () => {
+  stop('Backend changed. Connect to the selected model to continue.');
+  text(
+    'header-mode-mark',
+    remote() ? 'EXPERIMENT 03 / SERVER AI' : 'EXPERIMENT 03 / LOCAL AI',
+  );
+  text(
+    'backend-credit',
+    remote() ? 'DiffusionGemma · Jev server' : 'Qwen 3.5 · WebLLM · WebGPU',
+  );
+  probe?.reject(new Error('Backend changed'));
+  probe = null;
+  clearTimeout(watchdog);
+  worker?.terminate();
+  worker = null;
+  loaded = loading = busy = false;
+  pending = null;
+  mode = 'idle';
+  resetRace();
+  $('download').hidden = true;
+  text('load', remote() ? 'Connect DiffusionGemma' : 'Load Qwen 3.5');
+  text(
+    'compatibility',
+    remote()
+      ? 'Use the local Jev proxy to connect to a DiffusionGemma server.'
+      : 'Qwen runs locally through WebGPU.',
+  );
+  hideError();
+  enabled();
+  updateUI();
+};
 function start() {
   if (mode === 'idle' || loading || !rendererReady || probe) return;
   if (game.over) resetRace();
@@ -830,7 +877,7 @@ function start() {
   text(
     'run-status',
     mode === 'model'
-      ? 'Qwen is reading the circuit…'
+      ? `${modelName()} is reading the circuit…`
       : 'Scripted drive. These rules do not read your prompts or count as AI decisions.',
   );
   updateUI();
@@ -903,7 +950,7 @@ function applyPrompt(restore = false) {
   text(
     'prompt-status',
     mode === 'scripted'
-      ? 'Saved. Select Qwen to drive with these instructions.'
+      ? 'Saved. Select a model to drive with these instructions.'
       : 'Applied. This car’s next AI choice will use these instructions.',
   );
 }
@@ -960,7 +1007,7 @@ enabled();
       );
   } catch (error) {
     gpuAvailable = false;
-    text('compatibility', error.message);
+    if (!remote()) text('compatibility', error.message);
     enabled();
   }
 })();
@@ -1043,7 +1090,7 @@ window.slipstreamProbe = (options = {}) => {
   if (!loaded || busy || game.running || probe)
     return Promise.reject(
       new Error(
-        'Load Qwen, pause the race, and wait for inference to finish before probing.',
+        `Connect ${modelName()}, pause the race, and wait for inference to finish before probing.`,
       ),
     );
   const car = game.drivers.find((driver) => driver.id === options.unitId);

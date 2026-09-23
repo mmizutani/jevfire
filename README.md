@@ -103,8 +103,9 @@ as each car finishes scoring. In two paired race seeds, the new scheduler made
 did not make the drivers better. [Measured speed and driving quality →](docs/driving-quality.md)
 
 [**Last Hearth**](https://kikoncuo.github.io/jevfire/) gives villagers distinct
-roles, personalities and finite jobs. All three demos run the pinned Qwen3.5 0.8B
-locally through WebLLM/WebGPU. Browser field work is sequential with context reuse;
+roles, personalities and finite jobs. The published demos run the pinned Qwen3.5 0.8B
+locally through WebLLM/WebGPU. A local fork can also select DiffusionGemma through
+the [Jev server setup](web/README.md#diffusiongemma-through-jev). Browser Qwen field work is sequential with context reuse;
 the CUDA/vLLM server's parallel batching and headline benchmarks are separate.
 
 ## Why it works
@@ -337,7 +338,7 @@ backend is vLLM 0.29.0 with Qwen3.8-27B-FP8. Other models need tokenizer, templa
 accuracy, and performance checks. [Start the tested backend →](docs/deployment.md)
 
 ```bash
-git clone https://github.com/kikoncuo/jevfire.git
+git clone https://github.com/mmizutani/jevfire.git
 cd jevfire
 python -m venv .venv
 source .venv/bin/activate

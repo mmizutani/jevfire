@@ -6,7 +6,7 @@
     <meta name="theme-color" content="#efe9dc" />
     <meta
       name="description"
-      content="World 1-1, played by a small local Qwen model. One cached maneuver decision at a time. Continuous Qwen play with a visible physics guard. An interactive JEVfire WebGPU experiment."
+      content="Play World 1-1 yourself, watch a scripted controller, or choose finite maneuvers with local Qwen or DiffusionGemma through Jev."
     />
     <title>World 1-1 · JEVfire</title>
     <link
@@ -37,14 +37,24 @@
             ><br />
             <small>Measured mean worker inference · Qwen + physics guard</small>
           </p>
-          <div class="cartridge" aria-hidden="true">
-            LOCAL<br /><b>0.8B</b><br />QWEN 3.5
+          <div id="cartridge" class="cartridge" aria-hidden="true">
+            <span id="cartridge-location">LOCAL</span><br /><b
+              id="cartridge-size"
+              >0.8B</b
+            ><br /><span id="cartridge-model">QWEN 3.5</span>
           </div>
         </div>
         <section class="toolbar" aria-label="Game controls">
           <button id="load" class="primary">
             Load Qwen <small>~450 MB · cached locally</small>
           </button>
+          <label
+            >AI backend
+            <select id="backend" aria-label="AI backend">
+              <option value="qwen">Local Qwen 3.5 · WebGPU</option>
+              <option value="jev">DiffusionGemma · Jev server</option>
+            </select>
+          </label>
           <button id="manual">Play yourself</button
           ><button id="scripted">Watch scripted</button>
           <button id="run" disabled>Start level</button
@@ -133,33 +143,34 @@
               <div><strong id="fps">—</strong><span>Render FPS</span></div>
             </section>
             <p id="status" class="status" role="status">
-              Play instantly with the keyboard, watch the rules, or download
-              Qwen to try the same level with local AI.
+              Play instantly with the keyboard, watch the rules, or connect a
+              model to try the same level with AI.
             </p>
             <details class="explanation">
               <summary>
-                Fast inference. Continuous play. Visible assistance.
+                Finite choices. Continuous play. Visible assistance.
               </summary>
               <p>
-                Qwen chooses one complete maneuver from typed options. Its
-                instructions stay cached across updates; only the small,
-                changing option table is processed. Each model update scores one
-                field. Jump press, hold and release are executed by the maneuver
+                The selected model chooses one complete maneuver from typed
+                options. With local Qwen, instructions stay cached across
+                updates; only the changing option table is processed. With
+                DiffusionGemma, the same finite choices go to the Jev server.
+                Jump press, hold and release are executed by the maneuver
                 controller.
               </p>
               <p>
                 The physics guard simulates short trajectories, filters unsafe
                 maneuvers and rechecks an answer when it arrives. It can brake
-                while waiting. This is a hybrid controller: Qwen chooses, local
-                physics handles feasibility and timing. The game and enemies
-                keep moving during inference. There is no stored route or
-                scripted jump fallback.
+                while waiting. This is a hybrid controller: the model chooses,
+                local physics handles feasibility and timing. The game and
+                enemies keep moving during inference. There is no stored route
+                or scripted jump fallback.
               </p>
               <p>
                 Raw buttons preserves the original three-field experiment
                 without a physics guard. Decision steps is available only there.
-                Prompt work reused means avoided token evaluations, not a
-                claimed latency multiplier.
+                For local Qwen, Prompt work reused means avoided token
+                evaluations, not a claimed latency multiplier.
               </p>
               <p>
                 This is a playable recreation of the first Super Mario Bros.
@@ -218,7 +229,7 @@
               </ol>
             </section>
             <details>
-              <summary>What Qwen was offered</summary>
+              <summary>What the model was offered</summary>
               <pre id="observation">
 The next accepted AI update will save its observation here.</pre
               >
@@ -227,7 +238,8 @@ The next accepted AI update will save its observation here.</pre
         </div>
       </main>
       <footer>
-        <span>JEVfire / WORLD 1—1</span><span>Qwen 3.5 · WebLLM · WebGPU</span
+        <span>JEVfire / WORLD 1—1</span
+        ><span id="backend-credit">Qwen 3.5 · WebLLM · WebGPU</span
         ><a
           href="https://github.com/kikoncuo/jevfire/blob/main/docs/browser-sdk.md"
           >Browser SDK ↗</a
